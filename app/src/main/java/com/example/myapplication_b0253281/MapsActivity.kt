@@ -26,6 +26,7 @@ import kotlinx.coroutines.launch
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import android.view.View
+import androidx.lifecycle.lifecycleScope
 
 class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
@@ -111,12 +112,12 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
                     val userLatLng = LatLng(it.latitude, it.longitude)
                     mMap.addMarker(MarkerOptions().position(userLatLng).title("你的位置"))
                     mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(userLatLng, 15f))
-                    fetchWeather(it.latitude, it.longitude)
+                    fetchWeatherWithLocation(it.latitude, it.longitude)
                 }
             }
     }
 
-    private fun fetchWeather(lat: Double, lng: Double) {
+    private fun fetchWeatherWithLocation(userLat: Double, userLng: Double) {
         val retrofit = Retrofit.Builder()
             .baseUrl("https://opendata.cwa.gov.tw/api/")
             .addConverterFactory(GsonConverterFactory.create())
@@ -124,31 +125,42 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
         val service = retrofit.create(WeatherService::class.java)
 
-        CoroutineScope(Dispatchers.Main).launch {
+        lifecycleScope.launch {
             try {
                 val response = service.getWeather(BuildConfig.WEATHER_API_KEY, "JSON", 100)
                 if (response.isSuccessful) {
-                    val stations = response.body()?.records?.Station ?: return@launch
-                    val nearest = stations.minByOrNull {
-                        val coord = stationCoordinates[it.StationId] ?: return@minByOrNull Double.MAX_VALUE
-                        distanceBetween(lat, lng, coord.latitude, coord.longitude)
+                    val stations = response.body()?.records?.Station ?: emptyList()
+                    val nearest = stations.minByOrNull { station ->
+                        val latLng = stationCoordinates[station.StationId]
+                            ?: return@minByOrNull Double.MAX_VALUE
+                        distanceBetween(userLat, userLng, latLng.latitude, latLng.longitude)
                     }
-                    nearest?.let {
+
+                    if (nearest != null) {
+                        val city = nearest.GeoInfo.CountyName
+                        val weather = nearest.WeatherElement.Weather
+                        val temp = nearest.WeatherElement.AirTemperature ?: "--"
+
                         val icon = when {
-                            it.WeatherElement.Weather.contains("晴") -> "☀️"
-                            it.WeatherElement.Weather.contains("雨") -> "🌧️"
-                            it.WeatherElement.Weather.contains("陰") -> "☁️"
+                            weather.contains("晴") -> "☀️"
+                            weather.contains("雨") -> "🌧️"
+                            weather.contains("陰") -> "☁️"
                             else -> "🌤"
                         }
-                        val temp = it.WeatherElement.AirTemperature ?: "--"
-                        weatherTextView.text = "$icon ${it.GeoInfo.CountyName}（${it.StationName}）：${it.WeatherElement.Weather} $temp°C"
+
+                        weatherTextView.text = "$icon $city：$weather $temp°C"
+                    } else {
+                        weatherTextView.text = "找不到鄰近氣象站"
                     }
+                } else {
+                    weatherTextView.text = "天氣錯誤：${response.code()}"
                 }
             } catch (e: Exception) {
-                weatherTextView.text = "天氣錯誤：${e.message}"
+                weatherTextView.text = "連線失敗：${e.message}"
             }
         }
     }
+
 
     private fun distanceBetween(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
         val result = FloatArray(1)
