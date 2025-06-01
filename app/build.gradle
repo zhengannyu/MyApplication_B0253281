@@ -4,6 +4,9 @@ plugins {
     alias(libs.plugins.google.android.libraries.mapsplatform.secrets.gradle.plugin)
 }
 
+def localProperties = new Properties()
+localProperties.load(new FileInputStream(rootProject.file("local.properties")))
+
 android {
     namespace 'com.example.myapplication_b0253281'
     compileSdk 35
@@ -16,8 +19,13 @@ android {
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-    }
+        buildConfigField("String", "PLACES_API_KEY", "\"${localProperties["PLACES_API_KEY"]}\"")
+        buildConfigField("String", "WEATHER_API_KEY", "\"${localProperties["WEATHER_API_KEY"]}\"")
 
+    }
+    buildFeatures {
+        buildConfig true
+    }
     buildTypes {
         release {
             minifyEnabled false
@@ -49,6 +57,9 @@ dependencies {
     androidTestImplementation libs.androidx.espresso.core
     //google map
     implementation 'com.google.android.gms:play-services-location:21.0.1'
+    //google Places APL
+    implementation 'com.google.android.libraries.places:places:3.4.0'
+
     //氣象
     // 網路請求用 Retrofit + GSON 解析
     implementation 'com.squareup.retrofit2:retrofit:2.9.0'
